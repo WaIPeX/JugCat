@@ -19,6 +19,73 @@ class JugCat:
             self.listen()
         else:
             self.send()
+    def send(self):
+        self.socket.connect((self.args.target, self.args.port))
+        if self.buffer:
+            self.socket.send(self.buffer)
+        try:
+            while True:
+                recv_len = 1
+                response = ''
+                while recv_len:
+                    data = self.socket.recv(4096)
+                    recv_len = len(data)
+                    response += data.decode()
+                    if recv_len < 4096:
+                        break
+                if response:
+                    print(response)
+                    buffer = input('> ')
+                    buffer += '\n'
+                    self.socket.send(buffer.encode())
+        except KeyboardInterrupt:
+            print('User terminated.')
+            self.socket.close()
+            sys.exit()
+
+    def listen(self):
+        print('listening')
+        self.socket.bind((self.args.target, self.args.port))
+        self.socket.listen(5)
+        while True:
+            client_socket, _ = self.socket.accept()
+            client_thread = threading.Thread(target=self.handle, args=(client_socket,))
+            client_thread.start()
+
+    def handle(self, client_socket):
+        if self.args.execute:
+            output = execute(self.args.execute)
+            client_socket.send(output.encode())
+        elif self.args.upload:
+            file_buffer = b''
+            while True:
+                data = client_socket.recv(4096)
+                if data:
+                    file_buffer += data
+                    print(len(file_buffer))
+                else:
+                    break
+            with open(self.args.upload, 'wb') as f:
+                f.write(file_buffer)
+            message = f'Saved file {self.args.upload}'
+            client_socket.send(message.encode())
+
+        elif self.args.command:
+            cmd_buffer = b''
+            while True:
+                try:
+                    client_socket.send(b' #> ')
+                    while '\n' not in cmd_buffer.decode():
+                        cmd_buffer += client_socket.recv(64)
+                    response = execute(cmd_buffer.decode())
+                    if response:
+                        client_socket.send(response.encode())
+                    cmd_buffer = b''
+                except Exception as e:
+                    print(f'server killed {e}')
+                    self.socket.close()
+                    sys.exit()                
+
 
 logo = """
 
@@ -30,23 +97,23 @@ logo = """
 ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     
  ░▒▓██████▓▒░ ░▒▓██████▓▒░ ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     
                                                                                
-                  ／l_             
-                （ﾟ､ ｡７         
-                 l  ~ヽ       
-                 じしf_,)ノ                          
-            ,*#%%#####/    #%##(        
-             ,,,,/,,/(((/(##(   (#//    
-              /,.,/##%%#/(         /#   
-              //.*#%((####         */   
-             #,.**%/%###%((        #/   
-           //**,*//#&/%%/#%#/     #/    
-          ,(.,,/,*(#%&#######%  %(      
-         (/*  ,//(/%#%(#/#/(%#%%(       
-         */...,/((/%##%(##%#(##         
-         , *..,/#(##%###%###%(#         
-         /(*,**.#/##%(/%%#%%(%          
-           */*(//(%/%((%%%%%(           
-            /*/**(#/((#%#(%                                                       
+                                    ／l_             
+                                    （ﾟ､ ｡７         
+                                    l  ~ヽ       
+                                    じしf_,)ノ                          
+                                ,*#%%#####/    #%##(        
+                                ,,,,/,,/(((/(##(   (#//    
+                                /,.,/##%%#/(         /#   
+                                //.*#%((####         */   
+                                #,.**%/%###%((        #/   
+                            //**,*//#&/%%/#%#/     #/    
+                            ,(.,,/,*(#%&#######%  %(      
+                            (/*  ,//(/%#%(#/#/(%#%%(       
+                            */...,/((/%##%(##%#(##         
+                            , *..,/#(##%###%###%(#         
+                            /(*,**.#/##%(/%%#%%(%          
+                            */*(//(%/%((%%%%%(           
+                                /*/**(#/((#%#(%                                                       
 """
 
 
@@ -60,10 +127,11 @@ def execute(cmd):
 # Run and check output of command on local machine
 
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='JugCat',
-        description='JugCat - Simple NClike tool, I hope it will be netcat compatibile',
+        description= logo + '\nJugCat - Simple NClike tool, I hope it will be netcat compatibile',
         formatter_class= argparse.RawDescriptionHelpFormatter,
         epilog = textwrap.dedent('''Usage examples:
                     jugcat.py -t 192.168.1.101 -p 4444 -l -c                     # Listen for command shell output
